@@ -42,7 +42,6 @@
 #define AP_SSID "SBC26"
 #define AP_PASS "PASS12345"
 
-#define BLINK_GPIO_1 GPIO_NUM_27
 #define relayPin 27 // Pin del relé para controlar la electroválvula
 #define SENSOR_GPIO ADC_CHANNEL_6
 
@@ -341,10 +340,13 @@ static void mqtt_event_handler(void *handler_args, esp_event_base_t base, int32_
         xEventGroupSetBits(s_wifi_event_group, MQTT_CONNECTED_BIT);
         while(1){
         uint32_t humidity = read_humidity_sensor();
-        printf("Humidity level: %ld\n", humidity);
+
+        float moisture_percent = convert_to_percentage(humidity);
+
+        printf("Humidity level: %.2f\n", moisture_percent);
     
         char payload[100];
-        snprintf(payload, sizeof(payload), "{\"humidity\": %.2ld}", humidity);
+        snprintf(payload, sizeof(payload), "{\"humidity\": %.2f}", moisture_percent);
         esp_mqtt_client_publish(client, "v1/devices/me/telemetry", payload, 0, 1, 0);
         vTaskDelay(2000 / portTICK_PERIOD_MS);
         }
@@ -448,6 +450,24 @@ uint32_t read_humidity_sensor()
     }
     
     return adc_reading;
+}
+
+float convert_to_percentage(uint32_t adc_value) {
+    const uint32_t dry_min = 400;
+    const uint32_t dry_max = 1400;
+    const uint32_t humid_min = 1400;
+    const uint32_t humid_max = 2400;
+    const uint32_t wet_min = 2400;
+
+    if (adc_value < dry_min) {
+        return 0.0; 
+    } else if (adc_value <= dry_max) {
+        return ((float)(adc_value - dry_min) / (dry_max - dry_min)) * 50.0;
+    } else if (adc_value <= humid_max) {
+        return 50.0 + ((float)(adc_value - humid_min) / (humid_max - humid_min)) * 50.0;
+    } else {
+        return 100.0;
+    }
 }
 
 static void set_static_dns() {
